@@ -109,9 +109,17 @@ results = calculate_color_parameters(spd, cmf_file='ciexyz31.csv', norm_Y=100)
 # 打印基本结果
 print("=" * 50)
 print("计算结果:")
-print(f"归一化XYZ: {results['XYZ_norm']}")
-print(f"色品坐标(xy): {results['xy']}")
-print(f"CIE 1960 UCS(uv): {results['uv']}")
+print("=" * 50)
+print(f"归一化XYZ值:")
+print(f"  X = {results['XYZ_norm'][0]:.6f}")
+print(f"  Y = {results['XYZ_norm'][1]:.6f}")
+print(f"  Z = {results['XYZ_norm'][2]:.6f}")
+print(f"色品坐标 (xy):")
+print(f"  x = {results['xy'][0]:.6f}")
+print(f"  y = {results['xy'][1]:.6f}")
+print(f"CIE 1960 UCS坐标 (uv):")
+print(f"  u = {results['uv'][0]:.6f}")
+print(f"  v = {results['uv'][1]:.6f}")
 print("=" * 50)
 
 # 1. 三角垂足插值法
@@ -304,6 +312,73 @@ def mccamy_approximation(x, y):
     cct = -437 * n ** 3 + 3601 * n ** 2 - 6861 * n + 5514.31
     return cct
 
+# 5. Duv计算
+def calculate_duv(u, v, T_min=1000, T_max=25000, T_step=50):
+
+    # 生成黑体轨迹温度点
+    temperatures = np.arange(T_min, T_max + T_step, T_step)
+    u_bb = np.zeros_like(temperatures, dtype=float)
+    v_bb = np.zeros_like(temperatures, dtype=float)
+
+    # 计算黑体轨迹坐标
+    for i, T in enumerate(temperatures):
+        # 生成黑体光谱
+        bb_spd = generate_blackbody_spd(T)
+
+        # 计算黑体色度参数
+        bb_params = calculate_color_parameters(bb_spd)
+
+        if bb_params:
+            u_bb[i] = bb_params['uv'][0]
+            v_bb[i] = bb_params['uv'][1]
+        else:
+            # 如果计算失败，使用线性插值填充
+            if i > 0:
+                u_bb[i] = u_bb[i - 1]
+                v_bb[i] = v_bb[i - 1]
+            else:
+                u_bb[i] = 0
+                v_bb[i] = 0
+
+    # 计算测试点到所有黑体点的距离
+    distances = np.sqrt((u_bb - u) ** 2 + (v_bb - v) ** 2)
+
+    # 找到最近的黑体点
+    min_idx = np.argmin(distances)
+    u0 = u_bb[min_idx]
+    v0 = v_bb[min_idx]
+
+    # 计算Duv
+    duv = np.sqrt((u - u0) ** 2 + (v - v0) ** 2)
+
+    # 计算黑体轨迹在最近点的切线
+    if min_idx > 0 and min_idx < len(temperatures) - 1:
+        # 取前后两点计算切线
+        u_prev = u_bb[min_idx - 1]
+        v_prev = v_bb[min_idx - 1]
+        u_next = u_bb[min_idx + 1]
+        v_next = v_bb[min_idx + 1]
+
+        # 切线向量 (从低温到高温)
+        tangent_vec = np.array([u_next - u_prev, v_next - v_prev])
+
+        # 法向量 (顺时针旋转90度)
+        normal_vec = np.array([-tangent_vec[1], tangent_vec[0]])
+
+        # 测试点相对于最近点的向量
+        test_vec = np.array([u - u0, v - v0])
+
+        # 计算点积确定方向
+        dot_product = np.dot(normal_vec, test_vec)
+        sign = 1 if dot_product > 0 else -1
+    else:
+        # 如果在端点，使用v坐标确定方向
+        sign = 1 if v > v0 else -1
+
+    duv *= sign
+
+    return duv
+
 # 计算四种方法的CCT
 cct_triangle = triangle_perpendicular_interpolation(results['u'],results['v'])
 cct_chebyshev = chebyshev_method(results['u'],results['v'])
@@ -318,21 +393,22 @@ print(f"3. 模拟黑体轨迹弧线法: {cct_arc:.2f} K")
 print(f"4. McCamy近似公式法: {cct_mccamy:.2f} K")
 print("=" * 50)
 
+# 3. 计算Duv
+u, v = results['uv']
+duv = calculate_duv(u, v)
+
+# 打印Duv结果
+print(f"Duv (色度偏差): {duv:.6f}")
+print("=" * 50)
+
+# 解释Duv值
+if abs(duv) < 0.0005:
+    print("光源颜色非常接近黑体轨迹")
+elif duv > 0:
+    print("光源颜色在黑体轨迹上方（偏绿）")
+else:
+    print("光源颜色在黑体轨迹下方（偏紫）")
+
 # 结果分析
 methods = ['三角垂足插值', 'Chebyshev', '弧线模拟', 'McCamy']
 cct_values = [cct_triangle, cct_chebyshev, cct_arc, cct_mccamy]
-
-# # 绘制结果比较图
-# plt.figure(figsize=(10, 6))
-# plt.bar(methods, cct_values, color=['blue', 'green', 'orange', 'red'])
-# plt.title('四种相关色温计算方法结果比较')
-# plt.ylabel('相关色温 (K)')
-# plt.grid(axis='y', linestyle='--', alpha=0.7)
-#
-# # 在柱子上方显示数值
-# for i, v in enumerate(cct_values):
-#     plt.text(i, v + 50, f'{v:.1f} K', ha='center', fontweight='bold')
-#
-# plt.tight_layout()
-# plt.savefig('cct_comparison.png')
-# plt.show()
