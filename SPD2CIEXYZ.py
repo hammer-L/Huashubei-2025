@@ -3,54 +3,116 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.constants import h, c, k
 from scipy.optimize import fsolve
-from scipy.interpolate import interp1d
-
-# 加载CIE 1931标准观察者数据
-cmf = pd.read_csv('ciexyz31.csv', header=None, names=['wavelength', 'x_bar', 'y_bar', 'z_bar'])
 
 # 加载光谱功率分布数据
 spd = pd.read_excel('P1_processed_data.xlsx', sheet_name=0, header=0, names=['wavelength', 'power'])
 
-# 合并前按波长排序
-cmf = cmf.sort_values('wavelength')
-spd = spd.sort_values('wavelength')
+def generate_blackbody_spd(T):
 
-# 合并两个数据集
-merged = pd.merge(spd, cmf, on='wavelength', how='inner')
+    # 生成波长数组 (380-780nm, 步长1nm)
+    wavelengths = np.arange(380, 781)
 
-# 计算XYZ三刺激值（使用梯形法数值积分）
-delta_lambda = 1  # 波长间隔为1nm
-X = np.trapezoid(merged['power'] * merged['x_bar'], dx=delta_lambda)
-Y = np.trapezoid(merged['power'] * merged['y_bar'], dx=delta_lambda)
-Z = np.trapezoid(merged['power'] * merged['z_bar'], dx=delta_lambda)
+    # 转换为米 (用于普朗克公式)
+    wavelengths_m = wavelengths * 1e-9
 
-# 计算归一化常数（使Y=100）
-k = 100 / Y
+    # 预计算常数
+    hc = h * c
+    hc2 = 2 * h * c ** 2
 
-# 应用归一化得到最终XYZ三刺激值
-X_norm = k * X
-Y_norm = 100  # 归一化后Y=100
-Z_norm = k * Z
+    # 计算指数项 (避免数值溢出)
+    exponent = hc / (wavelengths_m * k * T)
+    # 限制指数大小，避免数值溢出 (e^700 约 10^304)
+    exponent = np.clip(exponent, None, 700)
 
-# 计算色品坐标(xy)
-sum_XYZ = X_norm + Y_norm + Z_norm
-x = X_norm / sum_XYZ
-y = Y_norm / sum_XYZ
+    # 计算普朗克辐射公式
+    exp_term = np.exp(exponent)
+    with np.errstate(over='ignore', invalid='ignore'):
+        # 光谱辐射亮度 (W/m³·sr)
+        B_lambda = hc2 / (wavelengths_m ** 5) / (exp_term - 1)
+        # 处理数值问题
+        B_lambda = np.where(exp_term == np.inf, 0, B_lambda)
+        B_lambda = np.where(np.isnan(B_lambda), 0, B_lambda)
 
-# 计算CIE 1960 UCS坐标(uv)
-denominator = X_norm + 15 * Y_norm + 3 * Z_norm
-u = 4 * X_norm / denominator
-v = 6 * Y_norm / denominator
+    # 转换为每纳米的光谱功率 (W/m²·sr·nm)
+    # 因为1m = 1e9 nm, 所以需要乘以1e9
+    spd = B_lambda * 1e9
+
+    # 创建DataFrame (格式与输入文件相同)
+    df = pd.DataFrame({
+        'wavelength': wavelengths,
+        'power': spd
+    })
+    return df
+
+def calculate_color_parameters(spd_data, cmf_file='ciexyz31.csv', norm_Y=100):
+    # 加载CIE 1931标准观察者数据
+    cmf = pd.read_csv(cmf_file, header=None, names=['wavelength', 'x_bar', 'y_bar', 'z_bar'])
+
+    spd = spd_data.sort_values('wavelength')
+    cmf = cmf.sort_values('wavelength')
+
+    # 合并两个数据集
+    merged = pd.merge(spd, cmf, on='wavelength', how='inner')
+
+    # 计算XYZ三刺激值（使用梯形法数值积分）
+    delta_lambda = merged['wavelength'].diff().mean()
+    if np.isnan(delta_lambda) or delta_lambda <= 0:
+        delta_lambda = 1
+
+    X = np.trapezoid(merged['power'] * merged['x_bar'], dx=delta_lambda)
+    Y = np.trapezoid(merged['power'] * merged['y_bar'], dx=delta_lambda)
+    Z = np.trapezoid(merged['power'] * merged['z_bar'], dx=delta_lambda)
+
+    # 检查Y值是否为零
+    if Y == 0:
+        raise ValueError("Y值为零，无法归一化。请检查输入光谱数据。")
+
+    # 计算归一化常数（使Y=norm_Y）
+    k_norm = norm_Y / Y
+
+    # 应用归一化得到最终XYZ三刺激值
+    X_norm = k_norm * X
+    Y_norm = norm_Y
+    Z_norm = k_norm * Z
+
+    # 计算色品坐标(xy)
+    sum_XYZ = X_norm + Y_norm + Z_norm
+    if sum_XYZ == 0:
+        raise ValueError("归一化后的XYZ总和为零。")
+
+    x = X_norm / sum_XYZ
+    y = Y_norm / sum_XYZ
+
+    # 计算CIE 1960 UCS坐标(uv)
+    denominator = X_norm + 15 * Y_norm + 3 * Z_norm
+    if denominator == 0:
+        raise ValueError("CIE 1960 UCS分母为零。")
+
+    u = 4 * X_norm / denominator
+    v = 6 * Y_norm / denominator
+
+    # 返回计算结果
+    return {
+        'XYZ': [float(X), float(Y), float(Z)],
+        'XYZ_norm': [float(X_norm), float(Y_norm), float(Z_norm)],
+        'xy': [float(x), float(y)],
+        'x': float(x),
+        'y': float(y),
+        'uv': [float(u), float(v)],
+        'u': float(u),
+        'v': float(v),
+        'normalization_constant': k_norm
+    }
+
+results = calculate_color_parameters(spd, cmf_file='ciexyz31.csv', norm_Y=100)
 
 # 打印基本结果
 print("=" * 50)
-print(f"XYZ三刺激值: X={X_norm:.6f}, Y={Y_norm:.6f}, Z={Z_norm:.6f}")
-print(f"色品坐标: x={x:.6f}, y={y:.6f}")
-print(f"CIE 1960 UCS坐标: u={u:.6f}, v={v:.6f}")
+print("计算结果:")
+print(f"归一化XYZ: {results['XYZ_norm']}")
+print(f"色品坐标(xy): {results['xy']}")
+print(f"CIE 1960 UCS(uv): {results['uv']}")
 print("=" * 50)
-
-
-
 
 # 1. 三角垂足插值法
 def triangle_perpendicular_interpolation(u_c, v_c):
@@ -62,12 +124,14 @@ def triangle_perpendicular_interpolation(u_c, v_c):
 
     # 计算黑体轨迹坐标
     for i, T in enumerate(temperatures):
-        # 使用Chebyshev近似公式 T <= 4000K
+        # T <= 4000K 使用由普朗克公式得到的黑体轨迹
         if T <= 4000:
-            u_bb[i] = (0.860117757 + 1.54118254e-4 * T + 1.28641212e-7 * T ** 2) / \
-                      (1 + 8.42420235e-4 * T + 7.08145163e-7 * T ** 2)
-            v_bb[i] = (0.317398726 + 4.22806245e-5 * T + 4.20481691e-8 * T ** 2) / \
-                     (1 - 2.89741816e-5 * T + 1.61456053e-7 * T ** 2)
+            blackbody = generate_blackbody_spd(T)
+            blackbody.to_excel('blackbody.xlsx', index=False)
+            spdb = pd.read_excel('blackbody.xlsx', sheet_name=0, header=0, names=['wavelength', 'power'])
+            resultsb = calculate_color_parameters(spdb, cmf_file='ciexyz31.csv', norm_Y=100)
+            u_bb[i] = resultsb['u']
+            v_bb[i] = resultsb['v']
 
         # 4000K < T < 7000K 区间
         if T > 4000 and T < 7000:
@@ -131,7 +195,6 @@ def triangle_perpendicular_interpolation(u_c, v_c):
     cct = 1e6 / mired0
     return cct
 
-
 # 2. 黑体轨迹的Chebyshev法
 def chebyshev_method(u_c, v_c):
 
@@ -162,13 +225,12 @@ def chebyshev_method(u_c, v_c):
         return du * (u_t - u_c) + dv * (v_t - v_c)
 
     # 求解方程 (使用1000K-15000K范围)
-    T_guess = 3000  # 初始猜测值
+    T_guess = 3900  # 初始猜测值
     cct = fsolve(equation, T_guess, xtol=0.1)[0]
 
     # 确保在合理范围内
     cct = np.clip(cct, 1000, 15000)
     return cct
-
 
 # 3. 模拟黑体轨迹弧线法
 def arc_simulating_method(u_c, v_c):
@@ -195,7 +257,6 @@ def arc_simulating_method(u_c, v_c):
     theta_low = calc_angle(vec_to_Q_low)
     theta_high = calc_angle(vec_to_Q_high)
 
-    # 计算参数A和B (根据论文表1的多项式)
     # 低色温范围参数
     A_low = (24476 - 1690.96 * theta_low + 44.7172 * theta_low ** 2 -
              0.57152 * theta_low ** 3 + 3.5853e-3 * theta_low ** 4 -
@@ -227,8 +288,6 @@ def arc_simulating_method(u_c, v_c):
     cct_high = 1e6 / mired_high
 
     # 根据色温范围选择合适的结果
-    # 论文中方法适用于1667K-25000K (40-600微倒度)
-    # 如果两个结果都在合理范围内，取平均值
     if 1667 <= cct_low <= 25000 and 1667 <= cct_high <= 25000:
         return (cct_low + cct_high) / 2
     elif 1667 <= cct_low <= 25000:
@@ -239,20 +298,17 @@ def arc_simulating_method(u_c, v_c):
         # 如果都不在范围内，取平均值
         return (cct_low + cct_high) / 2
 
-
 # 4. McCamy近似公式法
 def mccamy_approximation(x, y):
-    """McCamy近似公式法计算相关色温"""
     n = (x - 0.3320) / (y - 0.1858)
     cct = -437 * n ** 3 + 3601 * n ** 2 - 6861 * n + 5514.31
     return cct
 
-
 # 计算四种方法的CCT
-cct_triangle = triangle_perpendicular_interpolation(u, v)
-cct_chebyshev = chebyshev_method(u, v)
-cct_arc = arc_simulating_method(u, v)
-cct_mccamy = mccamy_approximation(x, y)
+cct_triangle = triangle_perpendicular_interpolation(results['u'],results['v'])
+cct_chebyshev = chebyshev_method(results['u'],results['v'])
+cct_arc = arc_simulating_method(results['u'],results['v'])
+cct_mccamy = mccamy_approximation(results['x'],results['y'])
 
 # 打印结果
 print("相关色温(CCT)计算结果:")
