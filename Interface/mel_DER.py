@@ -7,20 +7,21 @@ mode1 = "Lucas et al., 2014"
 mode2 = "CIE S 026"
 
 #Lucas version
-def get_mel_DER_Lucas(spd: dataframe):
-
+def get_mel_DER_Lucas(spd: pd.DataFrame):
+    
+    #power numpy gen
+    power = spd["power"].to_numpy()
+    
+    #path
     input_excel = "Data/CIE S 026 alpha-opic Toolbox Lucas.xlsx"
-
     output_file = "Data/CIE S 026 alpha-opic Toolbox_modified.xlsx"
     
     # 加载Excel文件
     wb = openpyxl.load_workbook(input_excel, data_only=True)
-    
-    # 获取Inputs工作表
     inputs_sheet = wb['Inputs']
     
     # 将numpy数据填充到C24到C424单元格
-    for i, value in enumerate(numpy_data):
+    for i, value in enumerate(power):
         inputs_sheet[f'C{24 + i}'] = float(value)
     
     # 保存修改后的Excel文件
@@ -33,20 +34,21 @@ def get_mel_DER_Lucas(spd: dataframe):
     return j40_value
 
 #CIE version
-def get_mel_DER_CIE(numpy_data):
-
+def get_mel_DER_CIE(spd: pd.DataFrame):
+    
+    #power numpy gen
+    power = spd["power"].to_numpy()
+    
+    #path
     input_excel = "Data/CIE S 026 alpha-opic Toolbox CIE.xlsx"
-
     output_file = "Data/CIE S 026 alpha-opic Toolbox_modified.xlsx"
     
     # 加载Excel文件
     wb = openpyxl.load_workbook(input_excel, data_only=True)
-    
-    # 获取Inputs工作表
     inputs_sheet = wb['Inputs']
     
     # 将numpy数据填充到C24到C424单元格
-    for i, value in enumerate(numpy_data):
+    for i, value in enumerate(power):
         inputs_sheet[f'C{24 + i}'] = float(value)
     
     # 保存修改后的Excel文件
