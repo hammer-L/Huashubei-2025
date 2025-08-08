@@ -42,7 +42,7 @@ def generate_blackbody_spd(T):
     return df
 
 # SPD求参
-def calculate_color_parameters(spd_data, cmf_file='ciexyz31.csv', norm_Y=100):
+def calculate_color_parameters(spd_data, cmf_file='Data/ciexyz31.csv', norm_Y=100):
     # 加载CIE 1931标准观察者数据
     cmf = pd.read_csv(cmf_file, header=None, names=['wavelength', 'x_bar', 'y_bar', 'z_bar'])
 
@@ -115,9 +115,9 @@ def triangle_perpendicular_interpolation(u_c, v_c):
         # T <= 4000K 使用由普朗克公式得到的黑体轨迹
         if T <= 4000:
             blackbody = generate_blackbody_spd(T)
-            blackbody.to_excel('blackbody.xlsx', index=False)
-            spdb = pd.read_excel('blackbody.xlsx', sheet_name=0, header=0, names=['wavelength', 'power'])
-            resultsb = calculate_color_parameters(spdb, cmf_file='ciexyz31.csv', norm_Y=100)
+            blackbody.to_excel('Data/blackbody.xlsx', index=False)
+            spdb = pd.read_excel('Data/blackbody.xlsx', sheet_name=0, header=0, names=['wavelength', 'power'])
+            resultsb = calculate_color_parameters(spdb, cmf_file='Data/ciexyz31.csv', norm_Y=100)
             u_bb[i] = resultsb['u']
             v_bb[i] = resultsb['v']
 
@@ -290,4 +290,10 @@ def arc_simulating_method(u_c, v_c):
 def mccamy_approximation(x, y):
     n = (x - 0.3320) / (y - 0.1858)
     cct = -437 * n ** 3 + 3601 * n ** 2 - 6861 * n + 5514.31
+    return cct
+
+# SPD2CCT
+def get_cct(spd):
+    result = calculate_color_parameters(spd)
+    cct = triangle_perpendicular_interpolation(result['u'],result['v'])
     return cct
