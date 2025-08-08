@@ -6,7 +6,8 @@ import openpyxl
 mode1 = "Lucas et al., 2014"
 mode2 = "CIE S 026"
 
-def get_mel_DER_Lucas(numpy_data):
+#Lucas version
+def get_mel_DER_Lucas(spd: dataframe):
 
     input_excel = "Data/CIE S 026 alpha-opic Toolbox Lucas.xlsx"
 
@@ -31,6 +32,7 @@ def get_mel_DER_Lucas(numpy_data):
     
     return j40_value
 
+#CIE version
 def get_mel_DER_CIE(numpy_data):
 
     input_excel = "Data/CIE S 026 alpha-opic Toolbox CIE.xlsx"
