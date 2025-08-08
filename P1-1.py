@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
-import Duv
-import CCT
+import Interface.Duv
+import Interface.CCT
 import matplotlib.pyplot as plt
 import matplotlib
 import os
@@ -15,8 +15,8 @@ output_dir = os.path.join(current_dir, 'output')
 os.makedirs(output_dir, exist_ok=True)
 
 # 加载光谱功率分布数据
-spd = pd.read_excel('P1_processed_data.xlsx', sheet_name=0, header=0, names=['wavelength', 'power'])
-results = CCT.calculate_color_parameters(spd, cmf_file='ciexyz31.csv', norm_Y=100)
+spd = pd.read_excel('Data/P1_processed_data.xlsx', sheet_name=0, header=0, names=['wavelength', 'power'])
+results = Interface.CCT.calculate_color_parameters(spd, cmf_file='Data/ciexyz31.csv', norm_Y=100)
 
 # 打印基本结果
 print("=" * 50)
@@ -35,10 +35,10 @@ print(f"  v = {results['uv'][1]:.6f}")
 print("=" * 50)
 
 # 计算四种方法的CCT
-cct_triangle = CCT.triangle_perpendicular_interpolation(results['u'],results['v'])
-cct_chebyshev = CCT.chebyshev_method(results['u'],results['v'])
-cct_arc = CCT.arc_simulating_method(results['u'],results['v'])
-cct_mccamy = CCT.mccamy_approximation(results['x'],results['y'])
+cct_triangle = Interface.CCT.triangle_perpendicular_interpolation(results['u'],results['v'])
+cct_chebyshev = Interface.CCT.chebyshev_method(results['u'],results['v'])
+cct_arc = Interface.CCT.arc_simulating_method(results['u'],results['v'])
+cct_mccamy = Interface.CCT.mccamy_approximation(results['x'],results['y'])
 
 # 打印结果
 print("相关色温(CCT)计算结果:")
@@ -50,7 +50,7 @@ print("=" * 50)
 
 # 计算Duv
 u, v = results['uv']
-duv = Duv.calculate_duv(u, v)
+duv = Interface.Duv.calculate_duv(u, v)
 
 # 打印Duv结果
 print(f"Duv (色度偏差): {duv:.6f}")
@@ -99,8 +99,8 @@ plt.show()
 T_range = np.arange(1000, 25001, 500)
 u_bb, v_bb = [], []
 for T in T_range:
-    bb_spd = CCT.generate_blackbody_spd(T)
-    bb_params = CCT.calculate_color_parameters(bb_spd)
+    bb_spd = Interface.CCT.generate_blackbody_spd(T)
+    bb_params = Interface.CCT.calculate_color_parameters(bb_spd)
     u_bb.append(bb_params['u'])
     v_bb.append(bb_params['v'])
 
