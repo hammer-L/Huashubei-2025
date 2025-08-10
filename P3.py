@@ -1,4 +1,4 @@
-from scipy.optimize import nnls
+from scipy.optimize import minimize
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -30,41 +30,28 @@ def find_closest_time(target_time, available_times_str):
     return None
 
 # 拟合算法函数
-def shape_then_value_fit(led_matrix, target, alpha=0.5):
+def shape_value_fit_single_objective(led_matrix, target, alpha=0.5):
+    def normalize(y):
+        ymin, ymax = np.min(y), np.max(y)
+        if ymax - ymin < 1e-12:
+            return np.zeros_like(y)
+        return (y - ymin) / (ymax - ymin)
 
-    def linear_scale(y_fit, y_target):
-        # 对拟合结果做线性缩放，使其最大最小值与目标匹配
-        y_fit_min, y_fit_max = y_fit.min(), y_fit.max()
-        y_tar_min, y_tar_max = y_target.min(), y_target.max()
-        if y_fit_max - y_fit_min < 1e-12:
-            return np.full_like(y_fit, y_tar_min)
-        scale = (y_tar_max - y_tar_min) / (y_fit_max - y_fit_min)
-        offset = y_tar_min - y_fit_min * scale
-        return y_fit * scale + offset
+    def objective(w):
+        y_fit = led_matrix @ w
+        # 数值误差
+        value_err = np.sum((y_fit - target)**2)
+        # 形状误差
+        shape_err = np.sum((normalize(y_fit) - normalize(target))**2)
+        # 加权组合
+        return alpha * shape_err + (1 - alpha) * value_err
 
-    # 第一步：用 nnls 拟合数值部分，得到初始权重
-    w_value, _ = nnls(led_matrix, target)
-
-    # 计算拟合的光谱形状与目标的相关系数
-    y_fit_raw = led_matrix @ w_value
-    y_fit_scaled = linear_scale(y_fit_raw, target)
-
-    # 计算相关系数
-    def corr_coef(y_true, y_pred):
-        eps = 1e-12
-        y_true_mean = np.mean(y_true)
-        y_pred_mean = np.mean(y_pred)
-        numerator = np.sum((y_true - y_true_mean) * (y_pred - y_pred_mean))
-        denominator = np.sqrt(np.sum((y_true - y_true_mean)**2) * np.sum((y_pred - y_pred_mean)**2)) + eps
-        return numerator / denominator
-
-    target_scaled = linear_scale(target, y_fit_raw)  # 目标缩放到拟合光谱范围
-    w_shape, _ = nnls(led_matrix, target_scaled)
-
-    # 最终权重按alpha加权
-    w = alpha * w_shape + (1 - alpha) * w_value
-
-    return w
+    # 初始猜测
+    x0 = np.ones(led_matrix.shape[1])
+    # 约束 w >= 0
+    bounds = [(0, None)] * led_matrix.shape[1]
+    res = minimize(objective, x0, bounds=bounds, method="L-BFGS-B")
+    return res.x
 
 # 生成权重随时间变化表
 def generate_weights_for_times(times_to_generate, led_matrix, sun_df, fit_func):
@@ -138,7 +125,7 @@ def plot_spectrum_vs_alpha_subplots(times, alphas, led_matrix, sun_df, fit_func,
     print(f"已保存 PDF：{file_path}")
     plt.show()
 
-# 确定alpha三个时段的拟合光谱与太阳光谱对比图
+# alpha=0.5三个时段的拟合光谱与太阳光谱对比图
 def plot_fits_for_selected_times_subplots(times, led_matrix, sun_df, fit_func, save_dir="Output"):
     os.makedirs(save_dir, exist_ok=True)
     available_times_str = [str(t) for t in sun_df.columns]
@@ -233,7 +220,7 @@ def save_led_weights_table(weights_results, times_to_plot, filename="Output\weig
 # ================= 主执行逻辑 =================
 times_to_plot = generate_time_series_no_datetime('5:30', '17:30', 1)
 selected_times = ['5:30', '12:30', '17:30']
-weights_results = generate_weights_for_times(times_to_plot, led_matrix, sun_df, shape_then_value_fit)
+weights_results = generate_weights_for_times(times_to_plot, led_matrix, sun_df, shape_value_fit_single_objective)
 
 # 生成权重随时间变化表并保存
 save_led_weights_table(weights_results, times_to_plot)
@@ -242,6 +229,6 @@ save_led_weights_table(weights_results, times_to_plot)
 plot_led_weights_over_time(weights_results, times_to_plot)
 
 # 三个时段的拟合光谱与太阳光谱对比图
-alphas = np.linspace(0, 1, 5)
-plot_spectrum_vs_alpha_subplots(selected_times, alphas, led_matrix, sun_df, shape_then_value_fit)
-plot_fits_for_selected_times_subplots(selected_times, led_matrix, sun_df, shape_then_value_fit)
+alphas = np.linspace(0, 0.999, 5)
+plot_spectrum_vs_alpha_subplots(selected_times, alphas, led_matrix, sun_df, shape_value_fit_single_objective)
+plot_fits_for_selected_times_subplots(selected_times, led_matrix, sun_df, shape_value_fit_single_objective)
