@@ -87,14 +87,14 @@ def compute_tm30(reflectance_file, test_spd_file, ref_spd_file, spd_excel=False)
 
     st_vals = np.array([sd_test[wl] for wl in wls])
     sr_vals = np.array([sd_ref[wl] for wl in wls])
-    k_t = 100.0 / np.trapezoid(st_vals * y10, wls)
-    k_r = 100.0 / np.trapezoid(sr_vals * y10, wls)
+    k_t = 100.0 / np.trapz(st_vals * y10, wls)
+    k_r = 100.0 / np.trapz(sr_vals * y10, wls)
 
     def compute_XYZ(refl_vals, sd_vals, k):
         S = sd_vals * refl_vals
-        X = k * np.trapezoid(S * x10, wls)
-        Y = k * np.trapezoid(S * y10, wls)
-        Z = k * np.trapezoid(S * z10, wls)
+        X = k * np.trapz(S * x10, wls)
+        Y = k * np.trapz(S * y10, wls)
+        Z = k * np.trapz(S * z10, wls)
         return np.array([X, Y, Z])
 
     n_samples = refl_array.shape[0]
@@ -219,7 +219,7 @@ def visualize_rf_rg(Jab_test, Jab_ref):
     plt.tight_layout()
     plt.show()
 
-def get_Rf_Rg(test_spd_df,
+def get_rf_rg(test_spd_df,
               reflectance_file='Data/IESTM30_15_Sspds.dat',
               ref_spd_file='Data/d65.csv'):
     """
@@ -254,14 +254,14 @@ def get_Rf_Rg(test_spd_df,
 
     st_vals = np.array([sd_test[wl] for wl in wls])
     sr_vals = np.array([sd_ref[wl] for wl in wls])
-    k_t = 100.0 / np.trapezoid(st_vals * y10, wls)
-    k_r = 100.0 / np.trapezoid(sr_vals * y10, wls)
+    k_t = 100.0 / np.trapz(st_vals * y10, wls)
+    k_r = 100.0 / np.trapz(sr_vals * y10, wls)
 
     def compute_XYZ(refl_vals, sd_vals, k):
         S = sd_vals * refl_vals
-        X = k * np.trapezoid(S * x10, wls)
-        Y = k * np.trapezoid(S * y10, wls)
-        Z = k * np.trapezoid(S * z10, wls)
+        X = k * np.trapz(S * x10, wls)
+        Y = k * np.trapz(S * y10, wls)
+        Z = k * np.trapz(S * z10, wls)
         return np.array([X, Y, Z])
 
     n_samples = refl_array.shape[0]
@@ -330,5 +330,5 @@ results = compute_tm30(
     spd_excel=True
 )
 
-visualize_rf_rg(results['Jab_test'], results['Jab_ref'])
-print(results['Rf'],results['Rg'])
+#visualize_rf_rg(results['Jab_test'], results['Jab_ref'])
+#print(results['Rf'],results['Rg'])
